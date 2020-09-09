@@ -1,0 +1,210 @@
+<html>
+
+<body onload="main()">
+  <h4>Report</h4>
+  <p>
+    Learning Rate:
+    <span id="learning-rate"></span>
+  </p>
+  <p>Modal parameters calculated using gradient descent:</p>
+  <ol id="gd-parameters"></ol>
+
+  <!--
+  <p>Modal parameters calculated using Normal equations:</p>
+  <ol id="ne-parameters"></ol>
+  -->
+
+  <p>
+    Coefficient of Determination:
+    <span id="cod"></span>
+  </p>
+  <p>Predictions:</p>
+  <table border="1" cellspacing="0" cellpadding="5">
+    <thead>
+      <tr>
+        <th colspan="2">Features</th>
+        <th>Labels</th>
+      </tr>
+    </thead>
+    <tbody id="predictions"></tbody>
+  </table>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-vis@1.4.0"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/7.1.0/math.min.js"></script>
+  <script src="http://127.0.0.1:8080/data/predictions.js"></script>
+  <script src="http://127.0.0.1:8080/data/featureset_1.js"></script>
+  <script src="http://127.0.0.1:8080/data/featureset_2.js"></script>
+  <script src="http://127.0.0.1:8080/data/labelset_1.js"></script>
+  <script src="http://127.0.0.1:8080/data/labelset_2.js"></script>
+  <script src="http://127.0.0.1:8080/data/data.js"></script>
+  <script src="http://127.0.0.1:8080/logistic-regression.js"></script>
+  <script>
+    async function main() {
+      const fileURL = "http://127.0.0.1:8080/data/AllData.csv";
+      const trackerDataset = tf.data.csv(fileURL);
+      let options = {
+        learningRate: 0.1,
+        iterations: 10,
+        batchSize: 1000
+      }
+
+      await plotData(trackerDataset);
+
+      // Initialization
+      let regression = new LogisticRegression(trainingFeatures, trainingLabels, options);
+
+      // plotProcessedData(regression);
+
+      // Training
+      regression.train();
+      document.getElementById('learning-rate').innerHTML = regression.options.learningRate;
+
+      listParameters(regression);
+      // plotErrorGraph(regression);
+
+      // Testing
+      let cod = regression.test(testingFeatures, testingLabels);
+      document.getElementById('cod').innerHTML = cod;
+
+      // Prediction
+      // let predictions = regression.predict(input).arraySync();
+      listPredictions(input, predictions);
+
+      plotModel(input, predictions, trainingFeatures, trainingLabels);
+    }
+
+    function scatterplot(pointsArray, xLabel, yLabel, tabName) {
+      let surface = {
+        name: `${xLabel} vs ${yLabel}`,
+        tab: tabName
+      }
+      let data = { values: pointsArray };
+      let options = {
+        xLabel: xLabel,
+        yLabel: yLabel
+      }
+
+      tfvis.render.scatterplot(surface, data, options);
+    }
+
+    function linechart(pointsArray, xLabel, yLabel, tabName) {
+      let surface = {
+        name: `${xLabel} vs ${yLabel}`,
+        tab: tabName
+      }
+      let data = { values: pointsArray };
+      let options = {
+        xLabel: xLabel,
+        yLabel: yLabel
+      }
+
+      tfvis.render.linechart(surface, data, options);
+    }
+
+    function listParameters(regression) {
+      let weights = regression.weights.arraySync();
+      let ol = document.getElementById('gd-parameters');
+      for (let i = 0; i < weights.length; i++) {
+        var li = document.createElement('li');
+        li.innerHTML = weights[i];
+        ol.appendChild(li);
+      }
+
+      // let params = regression.normalEquation().arraySync();
+      // let ol2 = document.getElementById('ne-parameters');
+      // for (let i = 0; i < params.length; i++) {
+      //   var li = document.createElement('li');
+      //   li.innerHTML = params[i];
+      //   ol2.appendChild(li);
+      // }
+    }
+
+    function listPredictions(input, predictions) {
+      let tbody = document.getElementById('predictions');
+      for (let i = 0; i < predictions.length; i++) {
+        let tr = document.createElement('tr');
+        for (let j = 0; j < 2; j++) {
+          let td = document.createElement('td');
+          td.innerHTML = input[i][j].toFixed(6);
+          tr.appendChild(td);
+        }
+
+        let td2 = document.createElement('td');
+        td2.innerHTML = predictions[i][0].toFixed(6);
+        tr.appendChild(td2);
+        tbody.appendChild(tr);
+      }
+    }
+
+    function plotErrorGraph(regression) {
+      let errorValues = regression.mseHistory.reverse();
+      let errorPoints = [];
+      for (let i = 0; i < errorValues.length; i++) {
+        errorPoints.push({
+          x: i,
+          y: errorValues[i]
+        })
+      }
+
+      linechart(errorPoints, 'Iteration', 'J(Theta)', 'Cost');
+    }
+
+    async function plotData(trackerDataset) {
+      // Horsepower vs M.P.G
+      let bgPointsArray = await trackerDataset.map((record) => {
+        return {
+          x: record.Battery,
+          y: record.GSM
+        }
+      }).toArray();
+
+      scatterplot([bgPointsArray], 'Battery', 'G.S.M', 'Data');
+    }
+
+    function plotProcessedData(regression) {
+      let pFeatures = regression.features.arraySync();
+      let pLabels = regression.labels.arraySync();
+
+      let batteryGsm = [];
+      for (let i = 0; i < pFeatures.length; i++) {
+        batteryGsm.push({
+          x: pFeatures[i][1],
+          y: pFeatures[i][2]
+        });
+      }
+
+      scatterplot(batteryGsm, 'Battery', 'GSM', 'Scaled features');
+    }
+
+    function plotModel(input, predictions, trainingFeatures, trainingLabels) {
+      let values = [];
+      let xTickLabels = tf.linspace(1, 100, 100).arraySync();
+      let yTickLabels = tf.linspace(1, 100, 100).arraySync().reverse();
+
+      for (let i = 0; i < predictions.length;) {
+        let column = []
+        for (let j = 0; j < 100; j++) {
+          column.push(predictions[i++][0] >= 0.5 ? 1: 0)
+        }
+        values.push(column.reverse());
+      }
+
+      let data = {
+        values: values,
+        xTickLabels: xTickLabels,
+        yTickLabels: yTickLabels
+      }
+
+      const surface = { name: 'Heatmap', tab: 'Charts' }
+      tfvis.render.heatmap(surface, data, {
+        width: 600,
+        height: 400,
+        xLabel: 'Battery',
+        yLabel: 'GSM'
+      });
+    }
+  </script>
+
+</html>
