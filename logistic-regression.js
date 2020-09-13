@@ -5,7 +5,8 @@ class LogisticRegression {
   options = {
     learningRate: 0.1,
     iterations: 1000,
-    batchSize: 10
+    batchSize: 10,
+    decisionBoundary: 0.5
   };
 
   constructor(features, labels, options) {
@@ -17,7 +18,7 @@ class LogisticRegression {
     this.weights = tf.zeros([this.c, 1]);
 
     this.options = { ...this.options, ...options };
-    this.mseHistory = [];
+    this.crossEntropies = [];
   }
 
   processFeatures(featuresArray) {
@@ -66,7 +67,7 @@ class LogisticRegression {
         this.weights = this.gradientDescent(features, labels);
       }
 
-      this.recordMSE();
+      this.recordCost();
       this.updateLearningRate();
     }
   }
@@ -88,8 +89,8 @@ class LogisticRegression {
 
     let difference = h.sub(labels);
 
-    // Derivative of MSE w.r.t weights, i.e., J(Theta)
-    let J = features
+    // Derivative of Cost or J(Theta) w.r.t weights:
+    let slopes = features
       .transpose()
       .matMul(difference)
       //.mul(2) // Optional (Usually this is omitted in most of the Gradient descent implementations).
@@ -99,61 +100,37 @@ class LogisticRegression {
      * Multiply slopes with learning rate
      * and subtract results from weights.
      */
-    return this.weights.sub(J.mul(this.options.learningRate));
+    return this.weights.sub(slopes.mul(this.options.learningRate));
   }
 
   test(testFeaturesArray, testLabelsArray) {
-    let testFeatures = this.processFeatures(testFeaturesArray);
     let testLabels = tf.tensor(testLabelsArray);
-
-    let h = testFeatures.matMul(this.weights).sigmoid();
-    let cod = this.rSquared(testLabels, h);
-    // cod - coefficient of determination
-    return cod;
-  }
-
-  rSquared(labels, hypothesis) {
-    /**
-     * Coefficient-of-determination or R-squared or (R^2)
-     * R^2 = 1 - (SS_res / SS_tot)
-     * Where:
-     *  1. SS_res = Sum of Squares residual.
-     *  2. SS_tot = Sum of Squares total.
-     */
-    let a = labels.sub(hypothesis);
-    let SS_res = a.transpose().matMul(a).arraySync()[0][0];
-
-    let b = labels.sub(labels.mean());
-    let SS_tot = b.transpose().matMul(b).arraySync()[0][0];
-
-    let R_squared = 1 - (SS_res / SS_tot);
-    return R_squared;
+    let h = this.predict(testFeaturesArray);
+    let totalRows = h.shape[0];
+    let incorrectPredictions = h.sub(testLabels).abs().sum().arraySync();
+    // Calculate accuracy of the model.
+    return (totalRows - incorrectPredictions) / totalRows * 100;
   }
 
   // Cost function
-  recordMSE() {
-    let mse = this.features
-      .matMul(this.weights)
-      .sub(this.labels)
-      .pow(2)
-      .sum()
-      .div(this.n)
-      .arraySync();
-
-    this.mseHistory.unshift(mse);
+  recordCost() {
+    let h = this.features.matMul(this.weights).sigmoid();
+    let LHS = tf.scalar(-1).mul(this.labels).transpose().matMul(h.log());
+    let RHS = tf.scalar(1).sub(this.labels).transpose().matMul(tf.scalar(1).sub(h).log());
+    let cost = LHS.sub(RHS).div(this.n).dataSync()[0];
+    this.crossEntropies.unshift(cost);
   }
 
   updateLearningRate() {
-    if (this.mseHistory.length < 2) return;
+    if (this.crossEntropies.length < 2) return;
 
-    let currMSE = this.mseHistory[0];
-    let prevMSE = this.mseHistory[1];
-    // console.log(`CurrentMSE: ${currMSE}, prevMSE: ${prevMSE}`);
-    if (currMSE > prevMSE) {
-      // if MSE went up, divide learning rate by 2.
+    let currCost = this.crossEntropies[0];
+    let prevCost = this.crossEntropies[1];
+    if (currCost > prevCost) {
+      // if Cost went up, divide learning rate by 2.
       this.options.learningRate /= 2;
     } else {
-      // if MSE went down, increase learning rate by 5%.
+      // if Cost went down, increase learning rate by 5%.
       this.options.learningRate *= 1.05;
     }
   }
@@ -169,7 +146,11 @@ class LogisticRegression {
   }
 
   predict(observations) {
-    let processedObservation = this.processFeatures(observations);
-    return processedObservation.matMul(this.weights).sigmoid();
+    let processedFeatures = this.processFeatures(observations);
+    return processedFeatures
+      .matMul(this.weights)
+      .sigmoid()
+      .greaterEqual(this.options.decisionBoundary)
+      .cast("float32");
   }
 }

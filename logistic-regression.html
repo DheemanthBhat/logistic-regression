@@ -16,7 +16,7 @@
 
   <p>
     Coefficient of Determination:
-    <span id="cod"></span>
+    <span id="accuracy"></span>
   </p>
   <p>Predictions:</p>
   <table border="1" cellspacing="0" cellpadding="5">
@@ -62,11 +62,11 @@
       document.getElementById('learning-rate').innerHTML = regression.options.learningRate;
 
       listParameters(regression);
-      // plotErrorGraph(regression);
+      plotErrorGraph(regression);
 
       // Testing
-      let cod = regression.test(testingFeatures, testingLabels);
-      document.getElementById('cod').innerHTML = cod;
+      let accuracy = regression.test(testingFeatures, testingLabels);
+      document.getElementById('accuracy').innerHTML = accuracy;
 
       // Prediction
       // let predictions = regression.predict(input).arraySync();
@@ -139,7 +139,7 @@
     }
 
     function plotErrorGraph(regression) {
-      let errorValues = regression.mseHistory.reverse();
+      let errorValues = regression.crossEntropies.reverse();
       let errorPoints = [];
       for (let i = 0; i < errorValues.length; i++) {
         errorPoints.push({
